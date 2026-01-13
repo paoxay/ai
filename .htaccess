@@ -1,0 +1,18 @@
+# .htaccess
+
+# 1. ປິດການສະແດງລາຍຊື່ໄຟລ໌ໃນໂຟນເດີ (Directory Listing)
+Options -Indexes
+
+# 2. ຫ້າມເຂົ້າເຖິງໄຟລ໌ .env ແລະ ໄຟລ໌ເລີ່ມຕົ້ນດ້ວຍ .
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 3. ຫ້າມເຂົ້າເຖິງໂຟນເດີ engine ໂດຍກົງ (ເພາະມັນຄືຄວາມລັບ AI)
+RewriteEngine On
+RewriteRule ^engine/ - [F,L]
+RewriteRule ^config/ - [F,L]
+
+# 4. ຕັ້ງຄ່າ Error Page (ຖ້າຢາກເຮັດໜ້າ 404 ງາມໆ)
+# ErrorDocument 404 /404.php

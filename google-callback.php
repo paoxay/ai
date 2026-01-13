@@ -1,0 +1,75 @@
+<?php
+// google-callback.php
+require_once 'config/database.php';
+session_start();
+
+if (isset($_GET['code'])) {
+    $code = $_GET['code'];
+    $client_id = getEnvVar('GOOGLE_CLIENT_ID');
+    $client_secret = getEnvVar('GOOGLE_CLIENT_SECRET');
+    $redirect_uri = getEnvVar('APP_URL') . '/google-callback.php';
+
+    // 1. ເອົາ Code ໄປແລກ Token
+    $token_url = "https://oauth2.googleapis.com/token";
+    $post_data = [
+        'code' => $code,
+        'client_id' => $client_id,
+        'client_secret' => $client_secret,
+        'redirect_uri' => $redirect_uri,
+        'grant_type' => 'authorization_code'
+    ];
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $token_url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $response = curl_exec($ch);
+    $token_data = json_decode($response, true);
+
+    if (isset($token_data['access_token'])) {
+        // 2. ເອົາ Token ໄປດຶງຂໍ້ມູນ User
+        $user_info_url = "https://www.googleapis.com/oauth2/v1/userinfo?access_token=" . $token_data['access_token'];
+        $user_info = json_decode(file_get_contents($user_info_url), true);
+
+        if (isset($user_info['email'])) {
+            $google_id = $user_info['id'];
+            $email = $user_info['email'];
+            $fullname = $user_info['name'];
+            $avatar = $user_info['picture'];
+
+            // 3. ກວດສອບ ຫຼື ສ້າງ User ໃໝ່ໃນ Database
+            // ຖ້າມີອີເມວນີ້ແລ້ວ ໃຫ້ອັບເດດຊື່ແລະຮູບ, ຖ້າບໍ່ມີໃຫ້ສ້າງໃໝ່ ແລະ ແຖມເງິນ 0 ກີບ
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE google_id = ?");
+            $stmt->execute([$google_id]);
+            $user = $stmt->fetch();
+
+            if ($user) {
+                // User ເກົ່າ: ອັບເດດຂໍ້ມູນ
+                $pdo->prepare("UPDATE users SET fullname=?, avatar=? WHERE id=?")
+                    ->execute([$fullname, $avatar, $user['id']]);
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['role'] = $user['role'];
+            } else {
+                // User ໃໝ່: ສ້າງເລີຍ (ແຖມເຄຣດິດຟຣີ 0)
+                $stmt = $pdo->prepare("INSERT INTO users (google_id, email, fullname, avatar, credit, role) VALUES (?, ?, ?, ?, 0.00, 'user')");
+                $stmt->execute([$google_id, $email, $fullname, $avatar]);
+                $_SESSION['user_id'] = $pdo->lastInsertId();
+                $_SESSION['role'] = 'user';
+            }
+
+            // ບັນທຶກ Session ອື່ນໆ
+            $_SESSION['fullname'] = $fullname;
+            $_SESSION['avatar'] = $avatar;
+
+            // ໄປໜ້າ Dashboard
+            header("Location: dashboard.php");
+            exit;
+        }
+    }
+}
+
+// ຖ້າຜິດພາດ ກັບໄປໜ້າ Login
+header("Location: login.php?error=google_login_failed");
+exit;
+?>
