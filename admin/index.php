@@ -1,5 +1,5 @@
 <?php
-// admin/index.php
+// admin/index.php - ສະບັບອັບເດດສົມບູນ (Full Version)
 require_once '../config/database.php';
 session_start();
 
@@ -111,44 +111,87 @@ $recent_orders = $stmt->fetchAll();
 
             <h4 class="fw-bold mb-3">ລາຍການລ່າສຸດ</h4>
             <div class="glass-card p-0 overflow-hidden">
-                <table class="table table-dark table-hover mb-0" style="background: transparent;">
-                    <thead>
-                        <tr>
-                            <th class="p-3">ID</th>
-                            <th class="p-3">ລູກຄ້າ</th>
-                            <th class="p-3">ສິນຄ້າ (Template)</th>
-                            <th class="p-3">ວັນທີ</th>
-                            <th class="p-3">ສະຖານະ</th>
-                            <th class="p-3">ຮູບຜົນລັດ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($recent_orders as $order): ?>
-                        <tr>
-                            <td class="p-3">#<?php echo $order['id']; ?></td>
-                            <td class="p-3">
-                                <div class="d-flex align-items-center">
-                                    <div class="bg-secondary rounded-circle me-2" style="width:30px;height:30px;"></div>
-                                    <?php echo htmlspecialchars($order['fullname']); ?>
-                                </div>
-                            </td>
-                            <td class="p-3"><?php echo htmlspecialchars($order['title']); ?></td>
-                            <td class="p-3 text-white-50"><?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?></td>
-                            <td class="p-3"><span class="badge bg-success">ສຳເລັດ</span></td>
-                            <td class="p-3">
-                                <a href="../<?php echo $order['final_image_path']; ?>" target="_blank" class="btn btn-sm btn-outline-info">
-                                    <i class="fas fa-eye"></i> ເບິ່ງ
-                                </a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0" style="background: transparent;">
+                        <thead>
+                            <tr>
+                                <th class="p-3">ID</th>
+                                <th class="p-3">ລູກຄ້າ</th>
+                                <th class="p-3">ສິນຄ້າ (Template)</th>
+                                <th class="p-3">ວັນທີ</th>
+                                <th class="p-3">ສະຖານະ</th>
+                                <th class="p-3">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach($recent_orders as $order): ?>
+                            <tr>
+                                <td class="p-3">#<?php echo $order['id']; ?></td>
+                                <td class="p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="bg-secondary rounded-circle me-2" style="width:30px;height:30px;"></div>
+                                        <?php echo htmlspecialchars($order['fullname']); ?>
+                                    </div>
+                                </td>
+                                <td class="p-3"><?php echo htmlspecialchars($order['title']); ?></td>
+                                <td class="p-3 text-white-50"><?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?></td>
+                                <td class="p-3">
+                                    <?php if($order['status']=='completed'): ?>
+                                        <span class="badge bg-success">ສຳເລັດ</span>
+                                    <?php elseif($order['status']=='processing'): ?>
+                                        <span class="badge bg-warning text-dark">ກຳລັງເຮັດ</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-danger">ລົ້ມເຫຼວ</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="p-3">
+                                    <?php if($order['status']=='completed' && !empty($order['final_image_path'])): ?>
+                                        <button onclick="viewImage('../<?php echo $order['final_image_path']; ?>')" class="btn btn-sm btn-outline-info">
+                                            <i class="fas fa-eye"></i> ເບິ່ງ
+                                        </button>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="adminViewModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-white">ຜົນງານທີ່ສ້າງ</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-0">
+                <img id="adminPreviewImg" src="" class="img-fluid" style="max-height: 80vh;">
+            </div>
+            <div class="modal-footer border-secondary">
+                <a id="adminDownloadLink" href="" download class="btn btn-primary">ດາວໂຫລດ</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    function viewImage(path) {
+        // ຕື່ມ random query string ເພື່ອປ້ອງກັນ Cache
+        const noCachePath = path + '?t=' + new Date().getTime();
+        document.getElementById('adminPreviewImg').src = noCachePath;
+        document.getElementById('adminDownloadLink').href = path; // ລິ້ງດາວໂຫລດໃຊ້ path ປົກກະຕິ
+        
+        // ເປີດ Modal
+        new bootstrap.Modal(document.getElementById('adminViewModal')).show();
+    }
+</script>
 
 </body>
 </html>
