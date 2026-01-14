@@ -50,12 +50,12 @@ $auth_url = "https://accounts.google.com/o/oauth2/v2/auth?client_id={$client_id}
         <?php endif; ?>
 
         <a href="<?php echo $auth_url; ?>" class="btn btn-light btn-lg w-100 mb-3 d-flex align-items-center justify-content-center gap-2">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="24">
+            <img src="https://thumbs.dreamstime.com/b/google-logo-vector-format-white-background-illustration-407571048.jpg" width="24">
             <span>ເຂົ້າສູ່ລະບົບດ້ວຍ Google</span>
         </a>
         
         <p class="small text-white-50 mt-3">
-            * ລະບົບຈະກວດສອບສິດ Admin/User ໂດຍອັດຕະໂນມັດ
+            * ຍິນດີຕ້ອນຮັບ
         </p>
     </div>
 
