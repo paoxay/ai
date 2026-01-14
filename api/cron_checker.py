@@ -30,7 +30,7 @@ def run_scheduler():
 
         # ລໍຖ້າ 50 ວິນາທີ ກ່ອນຮອບຕໍ່ໄປ
         print("   ...ພັກ 50 ວິນາທີ...")
-        time.sleep(50)
+        time.sleep(30)
 
 if __name__ == "__main__":
     run_scheduler()

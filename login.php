@@ -1,17 +1,29 @@
 <?php
+// login.php
 require_once 'config/database.php';
 session_start();
 
-// ຖ້າ Login ແລ້ວ ໃຫ້ໄປ Dashboard ເລີຍ
+// ຖ້າ Login ແລ້ວ ໃຫ້ໄປ Dashboard ຫຼື Admin
 if (isset($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+    if ($_SESSION['role'] === 'admin') {
+        header("Location: admin/index.php");
+    } else {
+        header("Location: dashboard.php");
+    }
     exit;
 }
 
-// ສ້າງລິ້ງ Google Login
+// *** SECURITY 1: ສ້າງ State Token ເພື່ອປ້ອງກັນ CSRF Attack ***
+if (empty($_SESSION['oauth_state'])) {
+    $_SESSION['oauth_state'] = bin2hex(random_bytes(32));
+}
+
+// ສ້າງລິ້ງ Google Login ພ້ອມແນບ state ໄປນຳ
 $client_id = getEnvVar('GOOGLE_CLIENT_ID');
 $redirect_uri = getEnvVar('APP_URL') . '/google-callback.php';
-$auth_url = "https://accounts.google.com/o/oauth2/v2/auth?client_id={$client_id}&redirect_uri={$redirect_uri}&response_type=code&scope=email%20profile";
+$state = $_SESSION['oauth_state']; // ສົ່ງ state ໄປນຳ
+
+$auth_url = "https://accounts.google.com/o/oauth2/v2/auth?client_id={$client_id}&redirect_uri={$redirect_uri}&response_type=code&scope=email%20profile&state={$state}";
 ?>
 
 <!DOCTYPE html>
@@ -33,13 +45,17 @@ $auth_url = "https://accounts.google.com/o/oauth2/v2/auth?client_id={$client_id}
             <p class="text-white-50">ລະບົບສ້າງປ້າຍໂຄສະນາອັດຕະໂນມັດ ດ້ວຍ AI</p>
         </div>
 
+        <?php if(isset($_GET['error'])): ?>
+            <div class="alert alert-danger">ການເຂົ້າສູ່ລະບົບຜິດພາດ ກະລຸນາລອງໃໝ່</div>
+        <?php endif; ?>
+
         <a href="<?php echo $auth_url; ?>" class="btn btn-light btn-lg w-100 mb-3 d-flex align-items-center justify-content-center gap-2">
             <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="24">
             <span>ເຂົ້າສູ່ລະບົບດ້ວຍ Google</span>
         </a>
         
         <p class="small text-white-50 mt-3">
-            * ລະບົບຈະສ້າງບັນຊີໃຫ້ອັດຕະໂນມັດເມື່ອເຂົ້າສູ່ລະບົບຄັ້ງທຳອິດ
+            * ລະບົບຈະກວດສອບສິດ Admin/User ໂດຍອັດຕະໂນມັດ
         </p>
     </div>
 
