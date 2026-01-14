@@ -1,11 +1,11 @@
 <?php
-// api/process_image.php (Start Task Only)
+// api/process_image.php
+// (Logic Fix: Handle Empty Inputs Correctly)
 header('Content-Type: application/json');
 require_once '../config/database.php';
-
 session_start();
 
-// ໂຫລດ Env
+// Load ENV
 function loadEnv($path) {
     if(!file_exists($path)) return;
     $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -18,57 +18,106 @@ function loadEnv($path) {
 loadEnv(__DIR__ . '/../.env');
 $api_key = $_ENV['KIE_API_KEY'] ?? '';
 
+// ກວດສອບ Login
 if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['status' => 'error', 'message' => 'ກະລຸນາເຂົ້າສູ່ລະບົບ']);
+    echo json_encode(['status' => 'error', 'message' => 'Login required']);
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $user_id = $_SESSION['user_id'];
-    $template_id = $_POST['template_id'];
-    $game_name = $_POST['game_name'] ?? 'Game';
-    $title_text = $_POST['title'] ?? '';
-    $price_text = $_POST['price'] ?? '';
-
     try {
-        $pdo->beginTransaction();
+        $user_id = $_SESSION['user_id'];
+        $template_id = $_POST['template_id'];
+        $aspect_ratio = $_POST['aspect_ratio'] ?? '1:1';
 
-        // ກວດສອບເງິນ
+        // 1. ດຶງຂໍ້ມູນ Template
         $stmt = $pdo->prepare("SELECT * FROM ai_templates WHERE id = ?");
         $stmt->execute([$template_id]);
         $template = $stmt->fetch();
 
+        if (!$template) throw new Exception("Template not found");
+
+        // 2. ຕັດເງິນ
         $stmt = $pdo->prepare("SELECT credit FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $user = $stmt->fetch();
-
-        if ($user['credit'] < $template['price']) throw new Exception("ຍອດເງິນບໍ່ພຽງພໍ");
-
-        // ຕັດເງິນ
+        if ($user['credit'] < $template['price']) throw new Exception("Credit ບໍ່ພໍ");
+        
+        $pdo->beginTransaction();
         $pdo->prepare("UPDATE users SET credit = credit - ? WHERE id = ?")->execute([$template['price'], $user_id]);
 
-        // 1. ຕຽມ Prompt (ແບບ Full AI ທີ່ເຈົ້າມັກ)
-        $final_prompt = str_replace('{game_name}', $game_name, $template['system_prompt']);
-        if (strpos($final_prompt, '{user_text_title}') !== false) {
-            $final_prompt = str_replace('{user_text_title}', $title_text, $final_prompt);
-        } else {
-            $final_prompt .= ", text \"$title_text\" written in huge beautiful typography";
-        }
-        if (!empty($price_text)) $final_prompt .= ", price \"$price_text\"";
+        // ========================================================
+        // 🔥 3. ປະມວນຜົນ Dynamic Fields (Logic ໃໝ່)
+        // ========================================================
+        $final_prompt = $template['system_prompt'];
+        $form_config = json_decode($template['form_config'] ?? '[]', true);
+        
+        $collected_data = []; 
 
-        // 2. ຍິງ API ສັ່ງງານ (Create Task)
-        $url = "https://api.kie.ai/api/v1/jobs/createTask";
+        foreach ($form_config as $field) {
+            $key = $field['key'];      
+            $type = $field['type'];    
+            $post_key = 'dynamic_' . $key; 
+
+            $replacement_value = "";
+
+            // 1. ກວດສອບວ່າ User ສົ່ງຄ່າມາບໍ່?
+            if ($type == 'image') {
+                // --- ກໍລະນີຮູບພາບ ---
+                if (isset($_FILES[$post_key]) && $_FILES[$post_key]['error'] == 0) {
+                    $upload_dir = __DIR__ . '/../assets/uploads/user_inputs/';
+                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                    
+                    $ext = pathinfo($_FILES[$post_key]['name'], PATHINFO_EXTENSION);
+                    $new_name = 'img_' . time() . '_' . rand(1000,9999) . '.' . $ext;
+                    
+                    if (move_uploaded_file($_FILES[$post_key]['tmp_name'], $upload_dir . $new_name)) {
+                        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+                        $host = $_SERVER['HTTP_HOST'];
+                        // ຖ້າອັບໂຫລດສຳເລັດ -> ໃຊ້ URL
+                        $replacement_value = "$protocol://$host/assets/uploads/user_inputs/$new_name";
+                    }
+                } else {
+                    // ຖ້າບໍ່ອັບໂຫລດ -> ເປັນຄ່າວ່າງ
+                    $replacement_value = "";
+                }
+            } else {
+                // --- ກໍລະນີຂໍ້ຄວາມ/ຕົວເລກ ---
+                $raw_val = $_POST[$post_key] ?? '';
+                $replacement_value = trim($raw_val); // ຕັດຍະຫວ່າງໜ້າຫຼັງ
+            }
+
+            // 2. 🔥 ຈຸດສຳຄັນ: ການແທນຄ່າ
+            if ($replacement_value === "") {
+                // ຖ້າເປັນຄ່າວ່າງ -> ລົບ {{key}} ອອກຈາກ Prompt ເລີຍ
+                // AI ຈະໄດ້ບໍ່ເຫັນຄຳວ່າ {{key}} ແລະ ບໍ່ມະໂນຂໍ້ມູນ
+                $final_prompt = str_replace("{{" . $key . "}}", "", $final_prompt);
+            } else {
+                // ຖ້າມີຄ່າ -> ແທນທີ່ຕາມປົກກະຕິ
+                $final_prompt = str_replace("{{" . $key . "}}", $replacement_value, $final_prompt);
+            }
+            
+            // ເກັບ Log (ສະເພາະອັນທີ່ມີຂໍ້ມູນ)
+            if ($replacement_value !== "") {
+                $collected_data[$key] = $replacement_value;
+            }
+        }
+
+        // ========================================================
+
+        // 4. ສົ່ງໄປ API
+        $api_url = "https://api.kie.ai/api/v1/jobs/createTask";
         $postData = [
             "model" => "nano-banana-pro",
             "input" => [
                 "prompt" => $final_prompt,
-                "aspect_ratio" => $_POST['aspect_ratio'] ?? "1:1",
+                "aspect_ratio" => $aspect_ratio,
                 "resolution" => "1K",
                 "output_format" => "png"
             ]
         ];
 
-        $ch = curl_init($url);
+        $ch = curl_init($api_url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
@@ -78,29 +127,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $result = json_decode($response, true);
         
-        // ຖ້າ API Error
         if (!isset($result['data']['taskId'])) {
-            throw new Exception("API Failed: " . ($result['message'] ?? 'Unknown Error'));
+            throw new Exception("API Error: " . ($result['message'] ?? 'Unknown Error'));
         }
         
-        $task_id = $result['data']['taskId'];
-
-        // 3. ບັນທຶກ Order ພ້ອມ Task ID ລົງ Database
-        $stmt = $pdo->prepare("INSERT INTO orders (user_id, template_id, task_id, status, created_at) VALUES (?, ?, ?, 'processing', NOW())");
-        $stmt->execute([$user_id, $template_id, $task_id]);
-        $order_id = $pdo->lastInsertId();
-
+        // 5. ບັນທຶກ Order
+        $user_inputs_json = json_encode($collected_data, JSON_UNESCAPED_UNICODE);
+        $sql = "INSERT INTO orders (user_id, template_id, task_id, status, user_text_title, created_at) VALUES (?, ?, ?, 'processing', ?, NOW())";
+        $pdo->prepare($sql)->execute([$user_id, $template_id, $result['data']['taskId'], $user_inputs_json]);
+        
         $pdo->commit();
-
-        // 4. ຕອບກັບທັນທີ! (ບໍ່ຕ້ອງຖ້າຮູບ)
-        echo json_encode([
-            'status' => 'processing', 
-            'order_id' => $order_id,
-            'message' => 'ກຳລັງສັ່ງ AI ສ້າງຮູບ...'
-        ]);
+        echo json_encode(['status' => 'processing', 'order_id' => $pdo->lastInsertId()]);
 
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
 }
